@@ -10,8 +10,8 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"free5gc/src/udm/context"
 	"free5gc/src/udm/logger"
-	"free5gc/src/udm/udm_context"
 	"math"
 	"math/big"
 	"strings"
@@ -144,7 +144,7 @@ func profileA(input string) (string, error) {
 
 	// test data from TS33.501 Annex C.4
 	// aHNPriv, _ := hex.DecodeString("c53c2208b61860b06c62e5406a7b330c2b577aa5558981510d128247d38bd1d")
-	aHNPriv, _ := hex.DecodeString(udm_context.GetUdmProfileAHNPrivateKey())
+	aHNPriv, _ := hex.DecodeString(context.GetUdmProfileAHNPrivateKey())
 	decryptSharedKey, _ := curve25519.X25519(aHNPriv, []byte(decryptPublicKey))
 	// fmt.Printf("deShared: %x\n", decryptSharedKey)
 
@@ -200,7 +200,7 @@ func profileB(input string) (string, error) {
 
 	// test data from TS33.501 Annex C.4
 	// bHNPriv, _ := hex.DecodeString("F1AB1074477EBCC7F554EA1C5FC368B1616730155E0041AC447D6301975FECDA")
-	bHNPriv, _ := hex.DecodeString(udm_context.GetUdmProfileBHNPrivateKey())
+	bHNPriv, _ := hex.DecodeString(context.GetUdmProfileBHNPrivateKey())
 
 	var xUncompressed, yUncompressed *big.Int
 	if uncompressed {
