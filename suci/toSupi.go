@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"free5gc/src/udm/context"
 	"free5gc/src/udm/logger"
+	"log"
 	"math"
 	"math/big"
 	"strings"
@@ -19,14 +20,14 @@ import (
 	"golang.org/x/crypto/curve25519"
 )
 
-// profile A
+// profile A.
 const ProfileAMacKeyLen = 32 // octets
 const ProfileAEncKeyLen = 16 // octets
 const ProfileAIcbLen = 16    // octets
 const ProfileAMacLen = 8     // octets
 const ProfileAHashLen = 32   // octets
 
-// profile B
+// profile B.
 const ProfileBMacKeyLen = 32 // octets
 const ProfileBEncKeyLen = 16 // octets
 const ProfileBIcbLen = 16    // octets
@@ -44,7 +45,8 @@ func CompressKey(uncompressed []byte, y *big.Int) []byte {
 	return compressed
 }
 
-// modified from https://stackoverflow.com/questions/46283760/how-to-uncompress-a-single-x9-62-compressed-point-on-an-ecdh-p256-curve-in-go
+// modified from https://stackoverflow.com/questions/46283760/
+// how-to-uncompress-a-single-x9-62-compressed-point-on-an-ecdh-p256-curve-in-go.
 func uncompressKey(compressedBytes []byte, priv []byte) (*big.Int, *big.Int) {
 	// Split the sign byte from the rest
 	signByte := uint(compressedBytes[0])
@@ -88,7 +90,9 @@ func uncompressKey(compressedBytes []byte, priv []byte) (*big.Int, *big.Int) {
 
 func HmacSha256(input, macKey []byte, macLen int) []byte {
 	h := hmac.New(sha256.New, macKey)
-	_, _ = h.Write(input)
+	if _, err := h.Write(input); err != nil {
+		log.Printf("HMAC SHA256 error %+v", err)
+	}
 	macVal := h.Sum(nil)
 	macTag := macVal[:macLen]
 	// fmt.Printf("macVal: %x\nmacTag: %x\n", macVal, macTag)
@@ -97,7 +101,10 @@ func HmacSha256(input, macKey []byte, macLen int) []byte {
 
 func Aes128ctr(input, encKey, icb []byte) []byte {
 	output := make([]byte, len(input))
-	block, _ := aes.NewCipher(encKey)
+	block, err := aes.NewCipher(encKey)
+	if err != nil {
+		log.Printf("AES128 CTR error %+v", err)
+	}
 	stream := cipher.NewCTR(block, icb)
 	stream.XORKeyStream(output, input)
 	// fmt.Printf("aes input: %x %x %x\naes output: %x\n", input, encKey, icb, output)
@@ -144,15 +151,26 @@ func profileA(input string) (string, error) {
 
 	// test data from TS33.501 Annex C.4
 	// aHNPriv, _ := hex.DecodeString("c53c2208b61860b06c62e5406a7b330c2b577aa5558981510d128247d38bd1d")
-	aHNPriv, _ := hex.DecodeString(context.GetUdmProfileAHNPrivateKey())
-	decryptSharedKey, _ := curve25519.X25519(aHNPriv, []byte(decryptPublicKey))
+	var aHNPriv []byte
+	if aHNPrivTmp, err := hex.DecodeString(context.UDM_Self().GetUdmProfileAHNPrivateKey()); err != nil {
+		log.Printf("Decode error: %+v", err)
+	} else {
+		aHNPriv = aHNPrivTmp
+	}
+	var decryptSharedKey []byte
+	if decryptSharedKeyTmp, err := curve25519.X25519(aHNPriv, []byte(decryptPublicKey)); err != nil {
+		log.Printf("X25519 error: %+v", err)
+	} else {
+		decryptSharedKey = decryptSharedKeyTmp
+	}
 	// fmt.Printf("deShared: %x\n", decryptSharedKey)
 
 	kdfKey := AnsiX963KDF(decryptSharedKey, decryptPublicKey, ProfileAEncKeyLen, ProfileAMacKeyLen, ProfileAHashLen)
 	decryptEncKey := kdfKey[:ProfileAEncKeyLen]
 	decryptIcb := kdfKey[ProfileAEncKeyLen : ProfileAEncKeyLen+ProfileAIcbLen]
 	decryptMacKey := kdfKey[len(kdfKey)-ProfileAMacKeyLen:]
-	// fmt.Printf("\ndeEncKey(size%d): %x\ndeMacKey: %x\ndeIcb: %x\n", len(decryptEncKey), decryptEncKey, decryptMacKey, decryptIcb)
+	// fmt.Printf("\ndeEncKey(size%d): %x\ndeMacKey: %x\ndeIcb: %x\n", len(decryptEncKey), decryptEncKey, decryptMacKey,
+	// decryptIcb)
 
 	decryptMacTag := HmacSha256(decryptCipherText, decryptMacKey, ProfileAMacLen)
 	if bytes.Equal(decryptMacTag, decryptMac) {
@@ -200,7 +218,12 @@ func profileB(input string) (string, error) {
 
 	// test data from TS33.501 Annex C.4
 	// bHNPriv, _ := hex.DecodeString("F1AB1074477EBCC7F554EA1C5FC368B1616730155E0041AC447D6301975FECDA")
-	bHNPriv, _ := hex.DecodeString(context.GetUdmProfileBHNPrivateKey())
+	var bHNPriv []byte
+	if bHNPrivTmp, err := hex.DecodeString(context.UDM_Self().GetUdmProfileBHNPrivateKey()); err != nil {
+		log.Printf("Decode error: %+v", err)
+	} else {
+		bHNPriv = bHNPrivTmp
+	}
 
 	var xUncompressed, yUncompressed *big.Int
 	if uncompressed {
@@ -224,12 +247,14 @@ func profileB(input string) (string, error) {
 		decryptPublicKeyForKDF = CompressKey(decryptPublicKey, yUncompressed)
 	}
 
-	kdfKey := AnsiX963KDF(decryptSharedKey.Bytes(), decryptPublicKeyForKDF, ProfileBEncKeyLen, ProfileBMacKeyLen, ProfileBHashLen)
+	kdfKey := AnsiX963KDF(decryptSharedKey.Bytes(), decryptPublicKeyForKDF, ProfileBEncKeyLen, ProfileBMacKeyLen,
+		ProfileBHashLen)
 	// fmt.Printf("kdfKey: %x\n", kdfKey)
 	decryptEncKey := kdfKey[:ProfileBEncKeyLen]
 	decryptIcb := kdfKey[ProfileBEncKeyLen : ProfileBEncKeyLen+ProfileBIcbLen]
 	decryptMacKey := kdfKey[len(kdfKey)-ProfileBMacKeyLen:]
-	// fmt.Printf("\ndeEncKey(size%d): %x\ndeMacKey: %x\ndeIcb: %x\n", len(decryptEncKey), decryptEncKey, decryptMacKey, decryptIcb)
+	// fmt.Printf("\ndeEncKey(size%d): %x\ndeMacKey: %x\ndeIcb: %x\n", len(decryptEncKey), decryptEncKey, decryptMacKey,
+	// decryptIcb)
 
 	decryptMacTag := HmacSha256(decryptCipherText, decryptMacKey, ProfileBMacLen)
 	if bytes.Equal(decryptMacTag, decryptMac) {
@@ -244,7 +269,7 @@ func profileB(input string) (string, error) {
 	return hex.EncodeToString(decryptPlainText), nil
 }
 
-// suci-0(SUPI type)-mcc-mnc-routingIndentifier-protectionScheme-homeNetworkPublicKeyIdentifier-schemeOutput
+// suci-0(SUPI type)-mcc-mnc-routingIndentifier-protectionScheme-homeNetworkPublicKeyIdentifier-schemeOutput.
 const supiTypePlace = 1
 const mccPlace = 2
 const mncPlace = 3
