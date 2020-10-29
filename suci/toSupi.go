@@ -137,6 +137,19 @@ func swapNibbles(input []byte) []byte {
 	return output
 }
 
+func calcSchemeResult(decryptPlainText []byte, supiType string) string {
+	var schemeResult string
+	if supiType == typeIMSI {
+		schemeResult = hex.EncodeToString(swapNibbles(decryptPlainText))
+		if schemeResult[len(schemeResult)-1] == 'f' {
+			schemeResult = schemeResult[:len(schemeResult)-1]
+		}
+	} else {
+		schemeResult = hex.EncodeToString(decryptPlainText)
+	}
+	return schemeResult
+}
+
 func profileA(input, supiType string) (string, error) {
 	logger.UeauLog.Infoln("SuciToSupi Profile A")
 	s, hexDecodeErr := hex.DecodeString(input)
@@ -190,17 +203,7 @@ func profileA(input, supiType string) (string, error) {
 	}
 
 	decryptPlainText := Aes128ctr(decryptCipherText, decryptEncKey, decryptIcb)
-
-	var schemeResult string
-	if supiType == typeIMSI {
-		schemeResult = hex.EncodeToString(swapNibbles(decryptPlainText))
-		if schemeResult[len(schemeResult)-1] == 'f' {
-			schemeResult = schemeResult[:len(schemeResult)-1]
-		}
-	} else {
-		schemeResult = hex.EncodeToString(decryptPlainText)
-	}
-
+	schemeResult := calcSchemeResult(decryptPlainText, supiType)
 	return schemeResult, nil
 }
 
@@ -284,17 +287,7 @@ func profileB(input, supiType string) (string, error) {
 	}
 
 	decryptPlainText := Aes128ctr(decryptCipherText, decryptEncKey, decryptIcb)
-
-	var schemeResult string
-	if supiType == typeIMSI {
-		schemeResult = hex.EncodeToString(swapNibbles(decryptPlainText))
-		if schemeResult[len(schemeResult)-1] == 'f' {
-			schemeResult = schemeResult[:len(schemeResult)-1]
-		}
-	} else {
-		schemeResult = hex.EncodeToString(decryptPlainText)
-	}
-
+	schemeResult := calcSchemeResult(decryptPlainText, supiType)
 	return schemeResult, nil
 }
 
