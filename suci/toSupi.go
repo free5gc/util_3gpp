@@ -15,6 +15,7 @@ import (
 	"log"
 	"math"
 	"math/big"
+	"math/bits"
 	"strings"
 
 	"golang.org/x/crypto/curve25519"
@@ -128,7 +129,28 @@ func AnsiX963KDF(sharedKey, publicKey []byte, profileEncKeyLen, profileMacKeyLen
 	return kdfKey
 }
 
-func profileA(input string) (string, error) {
+func swapNibbles(input []byte) []byte {
+	output := make([]byte, len(input))
+	for i, b := range input {
+		output[i] = bits.RotateLeft8(b, 4)
+	}
+	return output
+}
+
+func calcSchemeResult(decryptPlainText []byte, supiType string) string {
+	var schemeResult string
+	if supiType == typeIMSI {
+		schemeResult = hex.EncodeToString(swapNibbles(decryptPlainText))
+		if schemeResult[len(schemeResult)-1] == 'f' {
+			schemeResult = schemeResult[:len(schemeResult)-1]
+		}
+	} else {
+		schemeResult = hex.EncodeToString(decryptPlainText)
+	}
+	return schemeResult
+}
+
+func profileA(input, supiType string) (string, error) {
 	logger.UeauLog.Infoln("SuciToSupi Profile A")
 	s, hexDecodeErr := hex.DecodeString(input)
 	if hexDecodeErr != nil {
@@ -181,11 +203,11 @@ func profileA(input string) (string, error) {
 	}
 
 	decryptPlainText := Aes128ctr(decryptCipherText, decryptEncKey, decryptIcb)
-
-	return hex.EncodeToString(decryptPlainText), nil
+	schemeResult := calcSchemeResult(decryptPlainText, supiType)
+	return schemeResult, nil
 }
 
-func profileB(input string) (string, error) {
+func profileB(input, supiType string) (string, error) {
 	logger.UeauLog.Infoln("SuciToSupi Profile B")
 	s, hexDecodeErr := hex.DecodeString(input)
 	if hexDecodeErr != nil {
@@ -265,8 +287,8 @@ func profileB(input string) (string, error) {
 	}
 
 	decryptPlainText := Aes128ctr(decryptCipherText, decryptEncKey, decryptIcb)
-
-	return hex.EncodeToString(decryptPlainText), nil
+	schemeResult := calcSchemeResult(decryptPlainText, supiType)
+	return schemeResult, nil
 }
 
 // suci-0(SUPI type)-mcc-mnc-routingIndentifier-protectionScheme-homeNetworkPublicKeyIdentifier-schemeOutput.
@@ -311,14 +333,14 @@ func ToSupi(suci string) (string, error) {
 	}
 
 	if scheme == profileAScheme {
-		profileAResult, err := profileA(suciPart[len(suciPart)-1])
+		profileAResult, err := profileA(suciPart[len(suciPart)-1], suciPart[supiTypePlace])
 		if err != nil {
 			return "", err
 		} else {
 			return supiPrefix + mccMnc + profileAResult, nil
 		}
 	} else if scheme == profileBScheme {
-		profileBResult, err := profileB(suciPart[len(suciPart)-1])
+		profileBResult, err := profileB(suciPart[len(suciPart)-1], suciPart[supiTypePlace])
 		if err != nil {
 			return "", err
 		} else {
