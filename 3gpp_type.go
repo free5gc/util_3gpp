@@ -12,6 +12,6 @@ func (d *Dnn) MarshalBinary() (data []byte, err error) {
 
 func (d *Dnn) UnmarshalBinary(data []byte) error {
 
-	(*d) = data[1:]
+	(*d) = data[:]
 	return nil
 }
