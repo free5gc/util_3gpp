@@ -14,10 +14,12 @@ import (
 	"math"
 	"math/big"
 	"math/bits"
+	"strconv"
 	"strings"
 
 	"golang.org/x/crypto/curve25519"
 
+	udm_context "github.com/free5gc/udm/context"
 	"github.com/free5gc/util_3gpp/logger"
 )
 
@@ -296,13 +298,14 @@ const supiTypePlace = 1
 const mccPlace = 2
 const mncPlace = 3
 const schemePlace = 5
+const HNPublicKeyIDPlace = 6
 
 const typeIMSI = "0"
 const imsiPrefix = "imsi-"
 const profileAScheme = "1"
 const profileBScheme = "2"
 
-func ToSupi(suci string, privateKey string) (string, error) {
+func ToSupi(suci string) (string, error) {
 	suciPart := strings.Split(suci, "-")
 	logger.Util3GPPLog.Infof("suciPart %s\n", suciPart)
 
@@ -330,6 +333,12 @@ func ToSupi(suci string, privateKey string) (string, error) {
 	if suciPrefix == "suci" && suciPart[supiTypePlace] == typeIMSI {
 		supiPrefix = imsiPrefix
 		logger.Util3GPPLog.Infof("SUPI type is IMSI\n")
+	}
+
+	var privateKey string
+	keyIndex, err := strconv.Atoi(suciPart[HNPublicKeyIDPlace])
+	if keyIndex != 0 && err == nil {
+		privateKey = udm_context.UDM_Self().GetUdmHNPrivateKeybyHNPublicKeyID(keyIndex)
 	}
 
 	if scheme == profileAScheme {
