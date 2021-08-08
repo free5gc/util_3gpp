@@ -14,12 +14,19 @@ import (
 	"math"
 	"math/big"
 	"math/bits"
+	"strconv"
 	"strings"
 
 	"golang.org/x/crypto/curve25519"
 
 	"github.com/free5gc/util_3gpp/logger"
 )
+
+type SuciProfile struct {
+	ProtectionScheme string `yaml:"ProtectionScheme,omitempty"`
+	PrivateKey       string `yaml:"PrivateKey,omitempty"`
+	PublicKey        string `yaml:"PublicKey,omitempty"`
+}
 
 // profile A.
 const ProfileAMacKeyLen = 32 // octets
@@ -296,15 +303,17 @@ const supiTypePlace = 1
 const mccPlace = 2
 const mncPlace = 3
 const schemePlace = 5
+const HNPublicKeyIDPlace = 6
 
 const typeIMSI = "0"
 const imsiPrefix = "imsi-"
+const nullScheme = "0"
 const profileAScheme = "1"
 const profileBScheme = "2"
 
-func ToSupi(suci string, privateKey string) (string, error) {
+func ToSupi(suci string, suciProfiles []SuciProfile) (string, error) {
 	suciPart := strings.Split(suci, "-")
-	logger.Util3GPPLog.Infof("suciPart %s\n", suciPart)
+	logger.Util3GPPLog.Infof("suciPart: %+v", suciPart)
 
 	suciPrefix := suciPart[0]
 	if suciPrefix == "imsi" || suciPrefix == "nai" {
@@ -313,13 +322,11 @@ func ToSupi(suci string, privateKey string) (string, error) {
 
 	} else if suciPrefix == "suci" {
 		if len(suciPart) < 6 {
-			logger.Util3GPPLog.Errorf("Suci with wrong format\n")
-			return suci, fmt.Errorf("Suci with wrong format\n")
+			return "", fmt.Errorf("Suci with wrong format\n")
 		}
 
 	} else {
-		logger.Util3GPPLog.Errorf("Unknown suciPrefix\n")
-		return suci, fmt.Errorf("Unknown suciPrefix\n")
+		return "", fmt.Errorf("Unknown suciPrefix [%s]", suciPrefix)
 	}
 
 	logger.Util3GPPLog.Infof("scheme %s\n", suciPart[schemePlace])
@@ -332,21 +339,39 @@ func ToSupi(suci string, privateKey string) (string, error) {
 		logger.Util3GPPLog.Infof("SUPI type is IMSI\n")
 	}
 
+	if scheme == nullScheme { // NULL scheme
+		return supiPrefix + mccMnc + suciPart[len(suciPart)-1], nil
+	}
+
+	// (HNPublicKeyID-1) is the index of "suciProfiles" slices
+	keyIndex, err := strconv.Atoi(suciPart[HNPublicKeyIDPlace])
+	if err != nil {
+		return "", fmt.Errorf("Parse HNPublicKeyID error: %+v", err)
+	}
+	if keyIndex > len(suciProfiles) {
+		return "", fmt.Errorf("keyIndex(%d) out of range(%d)", keyIndex, len(suciProfiles))
+	}
+
+	protectScheme := suciProfiles[keyIndex-1].ProtectionScheme
+	privateKey := suciProfiles[keyIndex-1].PrivateKey
+
+	if scheme != protectScheme {
+		return "", fmt.Errorf("Protect Scheme mismatch [%s:%s]", scheme, protectScheme)
+	}
+
 	if scheme == profileAScheme {
-		profileAResult, err := profileA(suciPart[len(suciPart)-1], suciPart[supiTypePlace], privateKey)
-		if err != nil {
+		if profileAResult, err := profileA(suciPart[len(suciPart)-1], suciPart[supiTypePlace], privateKey); err != nil {
 			return "", err
 		} else {
 			return supiPrefix + mccMnc + profileAResult, nil
 		}
 	} else if scheme == profileBScheme {
-		profileBResult, err := profileB(suciPart[len(suciPart)-1], suciPart[supiTypePlace], privateKey)
-		if err != nil {
+		if profileBResult, err := profileB(suciPart[len(suciPart)-1], suciPart[supiTypePlace], privateKey); err != nil {
 			return "", err
 		} else {
 			return supiPrefix + mccMnc + profileBResult, nil
 		}
-	} else { // NULL scheme
-		return supiPrefix + mccMnc + suciPart[len(suciPart)-1], nil
+	} else {
+		return "", fmt.Errorf("Protect Scheme (%s) is not supported", scheme)
 	}
 }
